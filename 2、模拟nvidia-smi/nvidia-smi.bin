@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# 生成真正唯一的GPU UUID
+INSTANCE_ID=${CUDA_INSTANCE_ID:-0}
+# 基于主机名、用户名、时间戳和实例ID生成唯一标识
+UNIQUE_SEED=$(echo "${HOSTNAME}-${USER}-$(date +%s)-${INSTANCE_ID}" | md5sum | cut -c1-8)
+# 生成符合NVIDIA GPU UUID格式的唯一ID
+GPU_UUID="GPU-${UNIQUE_SEED}-$(printf '%04x' $((0x1000 + INSTANCE_ID)))-$(printf '%04x' $((0x2000 + INSTANCE_ID)))-$(printf '%04x' $((0x3000 + INSTANCE_ID)))-$(printf '%012x' $((0x100000000000 + INSTANCE_ID)))"
+
+# 处理不同的nvidia-smi命令参数
+case "$*" in
+    *"--query-gpu=uuid,driver_version,name,memory.total,pci.bus_id"*)
+        # 包含PCI Bus ID的查询
+        FAKE_PCI_ID=$(printf "00000000:%02x:00.0" $((1 + INSTANCE_ID)))
+        echo "$GPU_UUID,576.02,NVIDIA GeForce RTX 5090,32607,$FAKE_PCI_ID"
+        ;;
+    *"--query-gpu=uuid,driver_version,name,memory.total"*)
+        # 这是inference检测GPU的关键命令
+        echo "$GPU_UUID,576.02,NVIDIA GeForce RTX 5090,32607"
+        ;;
+    *"--query-gpu=pci.bus_id"*)
+        # PCI Bus ID查询
+        FAKE_PCI_ID=$(printf "00000000:%02x:00.0" $((1 + INSTANCE_ID)))
+        echo "$FAKE_PCI_ID"
+        ;;
+    *"--query-gpu=uuid"*)
+        # 只查询UUID
+        echo "$GPU_UUID"
+        ;;
+    *"--query-gpu="*)
+        # 其他GPU查询命令 - 尝试解析请求的字段
+        if [[ "$*" == *"pci.bus_id"* ]]; then
+            FAKE_PCI_ID=$(printf "00000000:%02x:00.0" $((1 + INSTANCE_ID)))
+            echo "$GPU_UUID,576.02,NVIDIA GeForce RTX 5090,32607,$FAKE_PCI_ID"
+        else
+            echo "$GPU_UUID,576.02,NVIDIA GeForce RTX 5090,32607"
+        fi
+        ;;
+    "--help"|"-h")
+        # 帮助信息
+        echo "nvidia-smi 576.02"
+        echo ""
+        echo "usage: nvidia-smi [options]"
+        echo ""
+        echo "    -h,   --help                Print usage information and exit."
+        echo "    -L,   --list-gpus           Display a list of GPUs connected to the system."
+        echo "    -q,   --query               Display GPU or Unit info."
+        ;;
+    "--list-gpus"|"-L")
+        # 列出GPU
+        echo "GPU 0: NVIDIA GeForce RTX 5090 (UUID: $GPU_UUID)"
+        ;;
+    *)
+        # 默认输出：模拟完整的nvidia-smi输出
+        echo "Mon Jun 16 15:15:36 2025       "
+        echo "+-----------------------------------------------------------------------------------------+"
+        echo "| NVIDIA-SMI 576.02              Driver Version: 576.02         CUDA Version: 12.9     |"
+        echo "|-----------------------------------------+------------------------+----------------------+"
+        echo "| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |"
+        echo "| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |"
+        echo "|                                         |                        |               MIG M. |"
+        echo "|=========================================+========================+======================|"
+        echo "|   0  NVIDIA GeForce RTX 5090        On  |   $(printf "00000000:%02x:00.0" $((1 + INSTANCE_ID)))  On |                  N/A |"
+        echo "| 30%   36C    P8             38W /  575W |    1024MiB /  32607MiB |      1%      Default |"
+        echo "|                                         |                        |                  N/A |"
+        echo "+-----------------------------------------+------------------------+----------------------+"
+        echo "                                                                                         "
+        echo "+-----------------------------------------------------------------------------------------+"
+        echo "| Processes:                                                                              |"
+        echo "|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |"
+        echo "|        ID   ID                                                               Usage      |"
+        echo "|=========================================================================================|"
+        echo "|    0   N/A  N/A            1234      C   /inference_process                    1024MiB |"
+        echo "+-----------------------------------------------------------------------------------------+"
+        ;;
+esac
